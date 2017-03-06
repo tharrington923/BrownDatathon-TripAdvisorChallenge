@@ -1,21 +1,28 @@
+# Note: This neural network example is based off of the examples found in:
+# https://hackernoon.com/tensorflow-in-a-nutshell-part-three-all-the-models-be1465993930#.clv8zj7xg
+
+# Import the important libraries that will be used
+
 import csv
 import tensorflow as tf
 from random import shuffle
 
-# Setup the Model Parameters (Layer sizes, Batch Size, etc.)
-#INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE = 13, 500, 2 # 58.7%
-#INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE = 13, 1000, 2 # 50.9%
-#INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE = 13, 200, 2 # 61%
-INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE = 13, 200, 2
-#BATCH_SIZE, NUM_TRAINING_STEPS = 200, 1000
-BATCH_SIZE, NUM_TRAINING_STEPS = 100, 2000
-BATCH_INDEX = 0
+# Define model params
 
-NUMBER_TRAINING_SAMPLES = 200000 #BATCH_SIZE*NUM_TRAINING_STEPS
-NUMBER_CLASS_1_SAMPLES = 100000
-# NUMBER_TRAINING_SAMPLES = 750000 #BATCH_SIZE*NUM_TRAINING_STEPS
-# NUMBER_CLASS_1_SAMPLES = 150000
-NUMBER_CLASS_0_SAMPLES = NUMBER_TRAINING_SAMPLES - NUMBER_CLASS_1_SAMPLES
+nFeatures, nOutputLayer = 13, 2
+nHiddenLayer = 200
+
+# Define training variables
+
+nBatch = 100
+nTrainSteps = 2000
+bIndex = 0
+
+nTrainingSamples = 200000 # Note: This must be equal to nBatch*nTrainSteps
+nClass1Samples = 100000 # We set the number of class 1 to train the network
+nClass0Samples = nTrainingSamples - nClass1Samples
+
+# Loading the training data that was divided into the two classes
 
 with open('class1.csv', 'rb') as csvfile:
     nextline = csv.reader(csvfile, delimiter=' ')
@@ -35,119 +42,128 @@ with open('class0.csv', 'rb') as csvfile:
             yList.append(float(y))
         class0.append(yList)
 
-print("The ratio is ",len(class1)," to ",len(class0))
+
+print("The number of class 1 samples: %d" % (len(class1)))
+print("The number of class 0 samples: %d" % (len(class0)))
+
+# Shuffle the data sets so the training data is randomly selected each time
 
 shuffle(class1)
 shuffle(class0)
+
+# Create lists to store the data for training and the data for testing separately
+# Storing the input and output vectors for each training sample as a tuple
+# training_data is a list of tuples containing (input, output) vectors
 
 training_data = []
 test_x = []
 test_y = []
 
-for x in range(NUMBER_CLASS_1_SAMPLES):
+for x in range(nClass1Samples):
     training_data.append((class1[x],[0,1]))
 
-for x in range(NUMBER_CLASS_0_SAMPLES):
+for x in range(nClass0Samples):
     training_data.append((class0[x],[1,0]))
 
-for x in range(NUMBER_CLASS_1_SAMPLES,len(class1)):
+for x in range(nClass1Samples,len(class1)):
     test_x.append(class1[x])
     test_y.append([0,1])
 
-for x in range(NUMBER_CLASS_0_SAMPLES,len(class0)):
+for x in range(nClass0Samples,len(class0)):
     test_x.append(class0[x])
     test_y.append([1,0])
 
-# for x in range(BATCH_SIZE*NUM_TRAINING_STEPS/2):
-#     training_data.append((class1[x],[0,1]))
-#     training_data.append((class0[x],[1,0]))
-#
-# for x in range(BATCH_SIZE*NUM_TRAINING_STEPS/2,len(class1)):
-#     test_x.append(class1[x])
-#     test_y.append([0,1])
-#
-# for x in range(BATCH_SIZE*NUM_TRAINING_STEPS/2,len(class0)):
-#     test_x.append(class0[x])
-#     test_y.append([1,0])
-
-
-# for x in range(BATCH_SIZE*NUM_TRAINING_STEPS/2,BATCH_SIZE*NUM_TRAINING_STEPS):
-#     test_x.append(class1[x])
-#     test_x.append(class0[x])
-#     test_y.append([0,1])
-#     test_y.append([1,0])
+# Shuffle the data so that it does not alternate between the two classes
 
 shuffle(training_data)
-print(len(training_data))
-print(len(test_y))
-print(len(test_x))
+
+# Create a list to store the percentage of properly indentified test samples for
+# each neural network
 
 test_accuracies = []
 
+# TF initializer for normal distribution (will be used to initialize network weights)
+
 initializer = tf.random_normal_initializer(stddev=0.1)
 
+# Create TF placeholders for the input and output vectors to our network
+# None is used as the first argument of shape to allow a value to be passed into shape (used for variable batch size)
+# Shape takes two arguments for a 2D tensor (matrix)
 
-# def init_weights(shape):
-#     return tf.Variable(tf.random_normal(shape, stddev=0.01))
-#
-# def model(X, w_h, w_o):
-#     h = tf.nn.sigmoid(tf.matmul(X, w_h)) # this is a basic mlp, think 2 stacked logistic regressions
-#     return tf.matmul(h, w_o) # note that we dont take the softmax at the end because our cost fn does that for us
+X = tf.placeholder(tf.float32, shape=[None, nFeatures])
+Y = tf.placeholder(tf.float32, shape=[None, nOutputLayer])
 
-# Setup Placeholders => None argument in shape lets us pass in arbitrary sized batches
-X = tf.placeholder(tf.float32, shape=[None, INPUT_SIZE])
-Y = tf.placeholder(tf.float32, shape=[None, OUTPUT_SIZE])
+# Create the hidden layer weight matrix and bias
 
-# Hidden Layer Variables
-W_1 = tf.get_variable("Hidden_W", shape=[INPUT_SIZE, HIDDEN_SIZE], initializer=initializer)
-b_1 = tf.get_variable("Hidden_b", shape=[HIDDEN_SIZE], initializer=initializer)
+wHidden = tf.get_variable("wHidden", shape=[nFeatures, nHiddenLayer], initializer=initializer)
+bHidden = tf.get_variable("bHidden", shape=[nHiddenLayer], initializer=initializer)
 
-# Hidden Layer Transformation
-hidden = tf.nn.relu(tf.matmul(X, W_1) + b_1)
+# Propagate input through hidden layer
 
-# Output Layer Variables
-W_2 = tf.get_variable("Output_W", shape=[HIDDEN_SIZE, OUTPUT_SIZE], initializer=initializer)
-b_2 = tf.get_variable("Output_b", shape=[OUTPUT_SIZE], initializer=initializer)
+hOutput = tf.nn.relu(tf.matmul(X, wHidden) + bHidden)
 
-# Output Layer Transformation
-output = tf.matmul(hidden, W_2) + b_2
-###############################################################
+# Output layer weight matrix and bias
 
-# Compute Loss
+wOutput = tf.get_variable("wOutput", shape=[nHiddenLayer, nOutputLayer], initializer=initializer)
+bOutput = tf.get_variable("bOutput", shape=[nOutputLayer], initializer=initializer)
+
+# Output layer vector
+
+output = tf.matmul(hOutput, wOutput) + bOutput
+
+# Compute the loss- difference between output of network and the expected output
+
 loss = tf.losses.softmax_cross_entropy(Y, output)
 
-# Compute Accuracy
-correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(output, 1))
-accuracy = 100 * tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+# Variables to store the accuracy and the correct prediction Compute Accuracy
 
-# Setup Optimizer
+cPrediction = tf.equal(tf.argmax(Y, 1), tf.argmax(output, 1))
+accuracy = 100 * tf.reduce_mean(tf.cast(cPrediction, tf.float32))
+
+# Setup the TF optimizer. We chose the AdamOptimizer
+
 train_op = tf.train.AdamOptimizer().minimize(loss)
 
-#tf.constant(value,dtype=, shape=None,name="BATCH_SIZE")
-
-### Launch the Session, to Communicate with Computation Graph ###
+# Now we launch the TF session to train the network
 with tf.Session() as sess:
-    # Initialize all variables in the graph
+
+    # The number of neural networks we train
     for k in range(500):
+
+        # Initialize the TF variables
         sess.run(tf.global_variables_initializer())
 
         def next_batch(batchIndex):
-            return (batchIndex,batchIndex+BATCH_SIZE)
+            return (batchIndex,batchIndex+nBatch)
 
-        # Training Loop
+        # Start the loop to train the neural network in batches
+        # The number of times we loop and train the network with all the training data
+        # We can adjust this to train the network multiple times with the training data
         for j in range(1):
-            BATCH_INDEX = 0
-            for i in range(NUM_TRAINING_STEPS):
-                batch_start, batch_end = next_batch(BATCH_INDEX)
-                BATCH_INDEX += BATCH_SIZE
-                batch_x, batch_y = zip(*training_data[batch_start:batch_end])
-                curr_acc, _ = sess.run([accuracy, train_op], feed_dict={X: batch_x, Y: batch_y})
-                if i % 100 == 0:
-                    print("Step %d Current Training Accuracy: %.3f" % (i, curr_acc))
 
-        # Evaluate on Test Data
-        test_accuracies.append(sess.run(accuracy, feed_dict={X: test_x,
-                                                                    Y: test_y}))
+            # Zero the batch index
+            bIndex = 0
+
+            # Loop over all the batches
+            for i in range(nTrainSteps):
+
+                # Set the start and end indices for the training batch
+                batch_start, batch_end = next_batch(bIndex)
+                bIndex += nBatch
+
+                # Variables to hold the batch of training data
+                batch_x, batch_y = zip(*training_data[batch_start:batch_end])
+
+                # Variable to hold the current accuracy
+                cAccuracy, _ = sess.run([accuracy, train_op], feed_dict={X: batch_x, Y: batch_y})
+
+                # Print the training accuracy every 100 Steps
+                if i % 100 == 0:
+                    print("Batch %d: Current Training Accuracy: %.3f" % (i/100, cAccuracy))
+
+        # Evaluate on Test Data and print the accuracy
+        test_accuracies.append(sess.run(accuracy, feed_dict={X: test_x, Y: test_y}))
         print('Test Accuracy: %.3f' % test_accuracies[-1])
 
+    # Print all
     print(test_accuracies)
